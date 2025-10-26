@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import Icon from '@/components/ui/icon';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
+import CandlestickChart from '@/components/CandlestickChart';
 
 interface CryptoData {
   id: string;
@@ -33,6 +34,15 @@ interface ChartDataPoint {
   volume?: number;
 }
 
+interface OHLCData {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 interface PriceAlert {
   id: string;
   cryptoId: string;
@@ -47,6 +57,8 @@ const Index = () => {
   const [filteredData, setFilteredData] = useState<CryptoData[]>([]);
   const [selectedCrypto, setSelectedCrypto] = useState<CryptoData | null>(null);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [ohlcData, setOhlcData] = useState<OHLCData[]>([]);
+  const [showCandlestick, setShowCandlestick] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,6 +137,37 @@ const Index = () => {
       }));
 
       setChartData(formattedChartData);
+
+      const ohlc: OHLCData[] = [];
+      const pricesData = data.prices;
+      const volumesData = data.total_volumes;
+      const chunkSize = days === 1 ? 1 : Math.floor(pricesData.length / 50);
+      
+      for (let i = 0; i < pricesData.length; i += chunkSize) {
+        const chunk = pricesData.slice(i, i + chunkSize);
+        if (chunk.length === 0) continue;
+        
+        const open = chunk[0][1];
+        const close = chunk[chunk.length - 1][1];
+        const high = Math.max(...chunk.map((p: [number, number]) => p[1]));
+        const low = Math.min(...chunk.map((p: [number, number]) => p[1]));
+        const volume = volumesData[i + chunkSize - 1]?.[1] || volumesData[i]?.[1] || 0;
+        
+        ohlc.push({
+          time: new Date(chunk[0][0]).toLocaleDateString('ru-RU', { 
+            month: 'short', 
+            day: 'numeric',
+            ...(days === 1 && { hour: '2-digit', minute: '2-digit' })
+          }),
+          open,
+          high,
+          low,
+          close,
+          volume
+        });
+      }
+      
+      setOhlcData(ohlc);
     } catch (error) {
       console.error('Error fetching chart data:', error);
     }
@@ -549,52 +592,73 @@ const Index = () => {
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="flex justify-end mb-4">
+                  <Button 
+                    variant={showCandlestick ? "default" : "outline"} 
+                    size="sm"
+                    onClick={() => setShowCandlestick(!showCandlestick)}
+                  >
+                    <Icon name={showCandlestick ? "BarChart3" : "CandlestickChart"} size={16} className="mr-2" />
+                    {showCandlestick ? 'Линейный график' : 'Свечной график'}
+                  </Button>
+                </div>
+
                 <Tabs defaultValue="price" className="w-full">
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="price">График цены</TabsTrigger>
                     <TabsTrigger value="volume">График объёма</TabsTrigger>
                   </TabsList>
                   <TabsContent value="price" className="mt-4">
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData}>
-                          <defs>
-                            <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
-                              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                          <XAxis 
-                            dataKey="time" 
-                            stroke="hsl(var(--muted-foreground))"
-                            tick={{ fontSize: 12 }}
-                          />
-                          <YAxis 
-                            stroke="hsl(var(--muted-foreground))"
-                            tick={{ fontSize: 12 }}
-                            tickFormatter={(value) => `$${value.toFixed(0)}`}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: 'hsl(var(--card))',
-                              border: '1px solid hsl(var(--border))',
-                              borderRadius: '0.5rem',
-                              color: 'hsl(var(--foreground))'
-                            }}
-                            formatter={(value: any) => [formatPrice(value), 'Цена']}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="price"
-                            stroke="hsl(var(--primary))"
-                            strokeWidth={2}
-                            fillOpacity={1}
-                            fill="url(#colorPrice)"
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                    {!showCandlestick ? (
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={chartData}>
+                            <defs>
+                              <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                            <XAxis 
+                              dataKey="time" 
+                              stroke="hsl(var(--muted-foreground))"
+                              tick={{ fontSize: 12 }}
+                            />
+                            <YAxis 
+                              stroke="hsl(var(--muted-foreground))"
+                              tick={{ fontSize: 12 }}
+                              tickFormatter={(value) => `$${value.toFixed(0)}`}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--card))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '0.5rem',
+                                color: 'hsl(var(--foreground))'
+                              }}
+                              formatter={(value: any) => [formatPrice(value), 'Цена']}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="price"
+                              stroke="hsl(var(--primary))"
+                              strokeWidth={2}
+                              fillOpacity={1}
+                              fill="url(#colorPrice)"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="lg:col-span-3">
+                        <CandlestickChart 
+                          data={ohlcData} 
+                          cryptoName={selectedCrypto.name}
+                          cryptoSymbol={selectedCrypto.symbol}
+                        />
+                      </div>
+                    )}
                   </TabsContent>
                   <TabsContent value="volume" className="mt-4">
                     <div className="h-80">
